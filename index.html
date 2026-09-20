@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Flip Clock">
+<meta name="theme-color" content="#000000">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Flip Clock</title>
+<style>
+:root{
+  --s:min(45vw,86vh);                 /* card size (landscape) */
+  --r:calc(var(--s)*.07);
+  --fs:calc(var(--s)*.86);            /* digit size: tweak here if needed */
+  --bg:#000; --card:#121212; --ink:#BEBEBE; --lab:#8E8E8E; --hinge:#000;
+}
+@media (orientation:portrait){:root{--s:min(86vw,44vh)}}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);overflow:hidden;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+body{display:flex;align-items:center;justify-content:center;
+  font-family:"HelveticaNeue-CondensedBlack","Helvetica Neue Condensed Black","Arial Narrow",sans-serif;font-weight:900;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+#board{display:flex;gap:calc(var(--s)*.07);transition:transform 2s ease}
+@media (orientation:portrait){#board{flex-direction:column}}
+.card{position:relative;width:var(--s);height:var(--s);perspective:calc(var(--s)*4);color:var(--ink)}
+.half,.flap{position:absolute;left:0;width:100%;height:50%;overflow:hidden;background:var(--card);
+  backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.half span,.flap span{display:block;height:var(--s);line-height:var(--s);text-align:center;
+  font-size:var(--fs);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.top,.front{top:0;border-radius:var(--r) var(--r) 0 0;border-bottom:calc(var(--s)*.006) solid var(--hinge)}
+.bottom,.back{bottom:0;border-radius:0 0 var(--r) var(--r);border-top:calc(var(--s)*.006) solid var(--hinge)}
+.bottom span,.back span{margin-top:calc(var(--s)/-2)}
+.flap{visibility:hidden;z-index:3}
+.front{transform-origin:50% 100%}
+.back{transform-origin:50% 0;transform:rotateX(90deg)}
+.go .flap{visibility:visible}
+.go .front{animation:down .2s ease-in forwards}
+.go .back{animation:up .25s cubic-bezier(.2,1.4,.4,1) .2s both}
+@keyframes down{to{transform:rotateX(-90deg);filter:brightness(.5)}}
+@keyframes up{from{transform:rotateX(90deg);filter:brightness(1.4)}to{transform:rotateX(0)}}
+.lab{position:absolute;z-index:5;color:var(--lab);font-size:calc(var(--s)*.07);letter-spacing:.04em;text-transform:uppercase}
+#wd{right:calc(var(--s)*.06);bottom:calc(var(--s)*.05)}
+#dt{right:calc(var(--s)*.06);top:calc(var(--s)*.05)}
+#ctl{position:fixed;inset:auto 0 calc(env(safe-area-inset-bottom) + 16px) 0;display:none;justify-content:center;gap:10px;z-index:9}
+#ctl.on{display:flex}
+#ctl button{font:inherit;font-size:17px;letter-spacing:.03em;color:var(--ink);background:#1c1c1c;border:0;border-radius:10px;padding:10px 14px}
+#ctl button[aria-pressed=false]{color:#666}
+@media (prefers-reduced-motion:reduce){.go .front,.go .back{animation-duration:1ms;animation-delay:0s}}
+</style>
+</head>
+<body>
+<div id="board">
+  <div class="card" id="h"><span class="lab" id="wd"></span></div>
+  <div class="card" id="m"><span class="lab" id="dt"></span></div>
+</div>
+<div id="ctl">
+  <button id="bSound" aria-pressed="false"></button>
+  <button id="bWake" aria-pressed="true"></button>
+</div>
+<script>
+const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+const cards=['h','m'].map(id=>{
+  const el=document.getElementById(id);
+  el.insertAdjacentHTML('afterbegin','<div class="half top"><span></span></div><div class="half bottom"><span></span></div><div class="flap front"><span></span></div><div class="flap back"><span></span></div>');
+  return {el,s:el.querySelectorAll('.half span,.flap span'),v:null};
+});
+function setNow(c,v){c.s.forEach(s=>s.textContent=v);c.v=v}
+function flip(c,v){
+  const [top,bot,front,back]=c.s;
+  top.textContent=v;back.textContent=v;front.textContent=c.v;bot.textContent=c.v;
+  c.el.classList.remove('go');void c.el.offsetWidth;c.el.classList.add('go');
+  setTimeout(()=>{bot.textContent=v;c.el.classList.remove('go')},460);c.v=v;
+}
+const pad=n=>String(n).padStart(2,'0');
+function render(animate){
+  const d=new Date(),vals=[pad(d.getHours()),pad(d.getMinutes())];
+  if(animate&&cards[0].v!==null&&cards[0].v!==vals[0]&&sound)chime();
+  cards.forEach((c,i)=>{if(c.v===null||!animate)setNow(c,vals[i]);else if(c.v!==vals[i])flip(c,vals[i])});
+  document.getElementById('wd').textContent=d.toLocaleDateString('en-AU',{weekday:'short'});
+  document.getElementById('dt').textContent=d.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+  const m=d.getMinutes(); // tiny drift against OLED burn-in
+  document.getElementById('board').style.transform=`translate(${(m%5)-2}px,${(Math.floor(m/5)%5)-2}px)`;
+}
+function tick(){render(true);setTimeout(tick,60000-(Date.now()%60000)+30)}
+render(false);setTimeout(tick,60000-(Date.now()%60000)+30);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){render(false);lockWake()}});
+
+/* hour-change clatter */
+let sound=store.get('sound')==='1',ac=null;
+function ensureAC(){if(!ac)ac=new (window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')ac.resume()}
+function click(t){
+  const buf=ac.createBuffer(1,ac.sampleRate*.012,ac.sampleRate),dt=buf.getChannelData(0);
+  for(let i=0;i<dt.length;i++)dt[i]=(Math.random()*2-1)*Math.pow(1-i/dt.length,3);
+  const src=ac.createBufferSource(),f=ac.createBiquadFilter(),g=ac.createGain();
+  f.type='bandpass';f.frequency.value=1800+Math.random()*1400;f.Q.value=1.2;g.gain.value=.5;
+  src.buffer=buf;src.connect(f).connect(g).connect(ac.destination);src.start(t);
+}
+function chime(){if(!ac)return;const t=ac.currentTime+.02;for(let i=0;i<20;i++)click(t+i*.13*(.8+Math.random()*.4))}
+
+/* keep screen awake */
+let wake=store.get('wake')!=='0',lock=null;
+async function lockWake(){if(!wake||lock||!('wakeLock' in navigator))return;
+  try{lock=await navigator.wakeLock.request('screen');lock.addEventListener('release',()=>lock=null)}catch(e){}}
+function releaseWake(){if(lock){lock.release();lock=null}}
+lockWake();
+
+/* settings: tap to open, tap clock or wait 4s to close */
+const ctl=document.getElementById('ctl'),bS=document.getElementById('bSound'),bW=document.getElementById('bWake');let hideT;
+function paint(){bS.textContent='Hour sound '+(sound?'on':'off');bS.setAttribute('aria-pressed',sound);
+  bW.textContent='Keep awake '+(wake?'on':'off');bW.setAttribute('aria-pressed',wake)}
+function hide(){ctl.classList.remove('on');clearTimeout(hideT)}
+function show(){ctl.classList.add('on');clearTimeout(hideT);hideT=setTimeout(hide,4000)}
+paint();
+document.addEventListener('click',e=>{lockWake();if(sound)ensureAC();
+  if(ctl.contains(e.target)){show();return}
+  ctl.classList.contains('on')?hide():show()});
+bS.onclick=()=>{sound=!sound;store.set('sound',sound?'1':'0');if(sound){ensureAC();click(ac.currentTime+.01)}paint()};
+bW.onclick=()=>{wake=!wake;store.set('wake',wake?'1':'0');wake?lockWake():releaseWake();paint()};
+
+if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
